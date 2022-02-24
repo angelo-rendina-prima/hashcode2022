@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::env;
 
 #[derive(Debug, Clone)]
 struct Worker {
@@ -147,11 +148,14 @@ fn parse_input(filename: &str) -> (Vec<Worker>, Vec<Project>) {
 struct WipProject {
     project: Project,
     started_at: usize,
-    workers: HashMap<String, String>,
+    workers: HashMap<String, (String, usize)>,
 }
 
 fn main() {
-    let (mut workers, projects) = parse_input("data/f.txt");
+    let arg = env::args().nth(1).unwrap();
+    let input = format!("data/{}.txt", arg);
+
+    let (mut workers, projects) = parse_input(&input);
 
     let mut heap = BinaryHeap::from(projects);
     let mut postponed = BinaryHeap::new();
@@ -181,9 +185,13 @@ fn main() {
                 }
 
                 let found_worker = found_worker.unwrap();
-                candidates.insert(found_worker.name.to_string(), skill.to_string());
-            }
+                // println!("Found worker {found_worker:?}");
 
+                candidates.insert(found_worker.name.to_string(), (skill.to_string(), *level));
+            }
+            // println!("Candidates {candidates:?}");
+            // println!("All workers: {workers:?}");
+            // println!();
             if project.roles.len() == candidates.len() {
                 let names = candidates.iter().map(|(name, _)| name.to_string()).collect::<Vec<String>>();
                 assigned_names.extend(names);
@@ -193,26 +201,33 @@ fn main() {
                     workers: candidates.drain().collect(),
                 });
             }
+
         }
+
 
         if assigned_projects.is_empty() {
             break;
         }
 
-        let (finished, ap): (Vec<WipProject>, Vec<WipProject>) = assigned_projects
+        let (finished, temp_assigned_projects): (Vec<WipProject>, Vec<WipProject>) = assigned_projects
             .to_vec()
             .into_iter()
             .partition(|proj| proj.started_at + proj.project.duration + 1 >= day);
 
         for proj in finished.iter() {
-            for (name, skill) in &proj.workers {
+            for (name, (skill, level)) in &proj.workers {
                 if let Some(w) = workers.iter_mut().find(|w| &w.name == name) {
-                    w.skill.entry(skill.to_string()).and_modify(|e| *e += 1);
+                    w.skill.entry(skill.to_string()).and_modify(|e| {
+                        if *e <= *level {
+                            *e += 1
+                        }
+                    });
+                    assigned_names.remove(name);
                 }
             }
         }
 
-        assigned_projects = ap;
+        assigned_projects = temp_assigned_projects;
 
         finished_project.extend(finished);
 
