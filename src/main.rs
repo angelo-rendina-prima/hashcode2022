@@ -1,12 +1,13 @@
-use std::collections::HashMap;
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Worker {
     name: String,
     skill: HashMap<String, usize>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct Project {
     name: String,
     duration: usize,
@@ -14,6 +15,34 @@ struct Project {
     before: usize,
     roles: HashMap<String, usize>,
 }
+
+impl PartialOrd for Project {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.score.partial_cmp(&other.score)
+    }
+}
+
+impl Ord for Project {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.score.cmp(&other.score)
+    }
+}
+
+
+// impl Project {
+//     fn skill_match(&self, worker: &Worker) -> HashMap<String, isize> {
+//         let mut match_scores = HashMap::new();
+//
+//         for (skill, req_level) in &self.roles {
+//             if let Some(level) = worker.skill.get(skill) {
+//                 let qualification_score = (level as isize) - (req_level as isize);
+//                 match_scores.insert(skill.to_string(), qualification_score);
+//             }
+//         }
+//
+//         match_scores
+//     }
+// }
 
 fn parse_input(filename: &str) -> (Vec<Worker>, Vec<Project>) {
     let file = std::fs::File::open(filename).expect("Cannot open file");
@@ -114,8 +143,91 @@ fn parse_input(filename: &str) -> (Vec<Worker>, Vec<Project>) {
     (workers, projects)
 }
 
+#[derive(Clone)]
+struct WipProject {
+    project: Project,
+    started_at: usize,
+    workers: HashMap<String, String>,
+}
+
 fn main() {
-    let (workers, projects) = parse_input("data/a.txt");
-    println!("Workers: {workers:#?}");
-    println!("Projects: {projects:#?}");
+    let (mut workers, projects) = parse_input("data/f.txt");
+
+    let mut heap = BinaryHeap::from(projects);
+    let mut postponed = BinaryHeap::new();
+
+    let mut assigned_projects = Vec::new();
+    let mut finished_project: Vec<WipProject> = Vec::new();
+    let mut assigned_names: HashSet<String> = HashSet::new();
+
+    let mut day = 0;
+
+    loop {
+        while let Some(project) = heap.pop() {
+            let mut candidates = HashMap::new();
+
+            for (skill, level) in &project.roles {
+                let found_worker = workers
+                    .iter()
+                    .filter(|worker| {
+                        !assigned_names.contains(&worker.name)
+                            && !candidates.contains_key(&worker.name)
+                    })
+                    .find(|worker| worker.skill.get(skill).map(|s| s >= level).unwrap_or(false));
+
+                if found_worker.is_none() {
+                    postponed.push(project.clone());
+                    break;
+                }
+
+                let found_worker = found_worker.unwrap();
+                candidates.insert(found_worker.name.to_string(), skill.to_string());
+            }
+
+            if project.roles.len() == candidates.len() {
+                let names = candidates.iter().map(|(name, _)| name.to_string()).collect::<Vec<String>>();
+                assigned_names.extend(names);
+                assigned_projects.push(WipProject {
+                    project: project.clone(),
+                    started_at: day,
+                    workers: candidates.drain().collect(),
+                });
+            }
+        }
+
+        if assigned_projects.is_empty() {
+            break;
+        }
+
+        let (finished, ap): (Vec<WipProject>, Vec<WipProject>) = assigned_projects
+            .to_vec()
+            .into_iter()
+            .partition(|proj| proj.started_at + proj.project.duration + 1 >= day);
+
+        for proj in finished.iter() {
+            for (name, skill) in &proj.workers {
+                if let Some(w) = workers.iter_mut().find(|w| &w.name == name) {
+                    w.skill.entry(skill.to_string()).and_modify(|e| *e += 1);
+                }
+            }
+        }
+
+        assigned_projects = ap;
+
+        finished_project.extend(finished);
+
+        heap.extend(postponed.drain());
+        day += 1;
+
+        if heap.is_empty() {
+            break;
+        }
+    }
+
+    println!("{}", finished_project.len());
+    for proj in finished_project {
+        println!("{}", proj.project.name);
+        let names = proj.workers.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>();
+        println!("{}", names.join(" "));
+    }
 }
