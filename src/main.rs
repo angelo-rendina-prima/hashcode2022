@@ -17,15 +17,21 @@ struct Project {
     roles: Vec<(String, usize)>,
 }
 
+impl Project {
+    fn priority(&self) -> f32 {
+        self.score as f32
+    }
+}
+
 impl PartialOrd for Project {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.score.partial_cmp(&other.score)
+        self.priority().partial_cmp(&other.priority())
     }
 }
 
 impl Ord for Project {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.score.cmp(&other.score)
+        self.partial_cmp(other).unwrap()
     }
 }
 
