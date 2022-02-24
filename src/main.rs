@@ -14,7 +14,7 @@ struct Project {
     duration: usize,
     score: usize,
     before: usize,
-    roles: HashMap<String, usize>,
+    roles: Vec<(String, usize)>,
 }
 
 impl PartialOrd for Project {
@@ -28,7 +28,6 @@ impl Ord for Project {
         self.score.cmp(&other.score)
     }
 }
-
 
 // impl Project {
 //     fn skill_match(&self, worker: &Worker) -> HashMap<String, isize> {
@@ -124,7 +123,7 @@ fn parse_input(filename: &str) -> (Vec<Worker>, Vec<Project>) {
             duration,
             score,
             before,
-            roles: HashMap::new(),
+            roles: Vec::with_capacity(skill_count),
         };
         // skill per project
         for _ in 0..skill_count {
@@ -136,7 +135,7 @@ fn parse_input(filename: &str) -> (Vec<Worker>, Vec<Project>) {
                 .expect("No skill level")
                 .parse::<usize>()
                 .expect("Not a number");
-            project.roles.insert(skill_name, skill_level);
+            project.roles.push((skill_name, skill_level));
         }
         projects.push(project);
     }
@@ -148,7 +147,7 @@ fn parse_input(filename: &str) -> (Vec<Worker>, Vec<Project>) {
 struct WipProject {
     project: Project,
     started_at: usize,
-    workers: HashMap<String, (String, usize)>,
+    workers: Vec<String>,
 }
 
 fn main() {
@@ -168,14 +167,13 @@ fn main() {
 
     loop {
         while let Some(project) = heap.pop() {
-            let mut candidates = HashMap::new();
+            let mut candidates = Vec::<String>::new();
 
             for (skill, level) in &project.roles {
                 let found_worker = workers
                     .iter()
                     .filter(|worker| {
-                        !assigned_names.contains(&worker.name)
-                            && !candidates.contains_key(&worker.name)
+                        !assigned_names.contains(&worker.name) && !candidates.contains(&worker.name)
                     })
                     .find(|worker| worker.skill.get(skill).map(|s| s >= level).unwrap_or(false));
 
@@ -187,42 +185,40 @@ fn main() {
                 let found_worker = found_worker.unwrap();
                 // println!("Found worker {found_worker:?}");
 
-                candidates.insert(found_worker.name.to_string(), (skill.to_string(), *level));
+                candidates.push(found_worker.name.to_string());
             }
             // println!("Candidates {candidates:?}");
             // println!("All workers: {workers:?}");
             // println!();
             if project.roles.len() == candidates.len() {
-                let names = candidates.iter().map(|(name, _)| name.to_string()).collect::<Vec<String>>();
-                assigned_names.extend(names);
+                assigned_names.extend(candidates.iter().cloned());
                 assigned_projects.push(WipProject {
                     project: project.clone(),
                     started_at: day,
-                    workers: candidates.drain().collect(),
+                    workers: candidates,
                 });
             }
-
         }
-
 
         if assigned_projects.is_empty() {
             break;
         }
 
-        let (finished, temp_assigned_projects): (Vec<WipProject>, Vec<WipProject>) = assigned_projects
-            .to_vec()
-            .into_iter()
-            .partition(|proj| proj.started_at + proj.project.duration + 1 >= day);
+        let (finished, temp_assigned_projects): (Vec<WipProject>, Vec<WipProject>) =
+            assigned_projects
+                .to_vec()
+                .into_iter()
+                .partition(|proj| proj.started_at + proj.project.duration + 1 >= day);
 
         for proj in finished.iter() {
-            for (name, (skill, level)) in &proj.workers {
-                if let Some(w) = workers.iter_mut().find(|w| &w.name == name) {
-                    w.skill.entry(skill.to_string()).and_modify(|e| {
-                        if *e <= *level {
-                            *e += 1
-                        }
-                    });
-                    assigned_names.remove(name);
+            for (role_id, worker_name) in proj.workers.iter().enumerate() {
+                if let Some(w) = workers.iter_mut().find(|w| &w.name == worker_name) {
+                    let (skill_name, skill_lvl) = &proj.project.roles[role_id];
+                    let w_skill = w.skill.entry(skill_name.to_string()).or_insert(0);
+                    if *w_skill <= *skill_lvl {
+                        *w_skill += 1;
+                    }
+                    assigned_names.remove(worker_name);
                 }
             }
         }
@@ -242,7 +238,6 @@ fn main() {
     println!("{}", finished_project.len());
     for proj in finished_project {
         println!("{}", proj.project.name);
-        let names = proj.workers.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>();
-        println!("{}", names.join(" "));
+        println!("{}", proj.workers.join(" "));
     }
 }
