@@ -17,38 +17,36 @@ struct Project {
     roles: Vec<(String, usize)>,
 }
 
-impl Project {
-    fn priority(&self) -> f32 {
-        self.score as f32
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct ProjectWrapper {
+    score: usize,
+    project: Project,
+}
+
+impl ProjectWrapper {
+    fn new(project: Project, current_day: usize) -> Self {
+        // if you finish on time you get more points
+        let score = project.before.saturating_sub(current_day) + project.score;
+
+        Self {
+            score,
+            project
+        }
     }
 }
 
-impl PartialOrd for Project {
+impl PartialOrd for ProjectWrapper {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.priority().partial_cmp(&other.priority())
+        self.score.partial_cmp(&other.score)
     }
 }
 
-impl Ord for Project {
+impl Ord for ProjectWrapper {
     fn cmp(&self, other: &Self) -> Ordering {
         self.partial_cmp(other).unwrap()
     }
 }
-
-// impl Project {
-//     fn skill_match(&self, worker: &Worker) -> HashMap<String, isize> {
-//         let mut match_scores = HashMap::new();
-//
-//         for (skill, req_level) in &self.roles {
-//             if let Some(level) = worker.skill.get(skill) {
-//                 let qualification_score = (level as isize) - (req_level as isize);
-//                 match_scores.insert(skill.to_string(), qualification_score);
-//             }
-//         }
-//
-//         match_scores
-//     }
-// }
 
 fn parse_input(filename: &str) -> (Vec<Worker>, Vec<Project>) {
     let file = std::fs::File::open(filename).expect("Cannot open file");
@@ -162,8 +160,10 @@ fn main() {
 
     let (mut workers, projects) = parse_input(&input);
 
+    let projects: Vec<ProjectWrapper> = projects.into_iter().map(|p| ProjectWrapper::new(p, 0)).collect();
+
     let mut heap = BinaryHeap::from(projects);
-    let mut postponed = BinaryHeap::new();
+    let mut postponed = Vec::new();
 
     let mut assigned_projects = Vec::new();
     let mut finished_project: Vec<WipProject> = Vec::new();
@@ -172,7 +172,7 @@ fn main() {
     let mut day = 0;
 
     loop {
-        while let Some(project) = heap.pop() {
+        while let Some(ProjectWrapper {project, ..}) = heap.pop() {
             let mut candidates = Vec::<String>::new();
 
             for (skill, level) in &project.roles {
@@ -184,7 +184,8 @@ fn main() {
                     .find(|worker| worker.skill.get(skill).map(|s| s >= level).unwrap_or(false));
 
                 if found_worker.is_none() {
-                    postponed.push(project.clone());
+                    // postpone it for the next day
+                    postponed.push(ProjectWrapper::new(project.clone(), day+1));
                     break;
                 }
 
@@ -233,9 +234,10 @@ fn main() {
 
         finished_project.extend(finished);
 
-        heap.extend(postponed.drain());
+        heap.extend(postponed.drain(..));
         day += 1;
 
+        // all jobs completed
         if heap.is_empty() {
             break;
         }
